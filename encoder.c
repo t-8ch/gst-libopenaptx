@@ -146,10 +146,10 @@ static void gst_aptx_encoder_class_init(GstAptXEncoderClass *klass) {
   GST_DEBUG_CATEGORY_INIT(ENCODER_NAME, G_STRINGIFY(ENCODER_NAME), 0,
                           "libopenaptx encoder");
 
-  gst_element_class_set_static_metadata(element_class, "libopenaptx encoder",
-                                        "Codec/Encoder/Audio",
-                                        "Audio encoder based on libopenaptx",
-                                        "Thomas Weißschuh <thomas@weissschuh.net>");
+  gst_element_class_set_static_metadata(
+      element_class, "libopenaptx encoder", "Codec/Encoder/Audio",
+      "Audio encoder based on libopenaptx",
+      "Thomas Weißschuh <thomas@weissschuh.net>");
 
   gst_element_class_add_pad_template(element_class,
                                      gst_static_pad_template_get(&src_factory));

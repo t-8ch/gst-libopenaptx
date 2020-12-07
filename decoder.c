@@ -117,10 +117,10 @@ static void gst_aptx_decoder_class_init(GstAptXDecoderClass *klass) {
 
   GstAudioDecoderClass *audio_decoder_class = GST_AUDIO_DECODER_CLASS(klass);
 
-  gst_element_class_set_static_metadata(element_class, "libopenaptx decoder",
-                                        "Codec/Decoder/Audio",
-                                        "Audio decoder based on libopenaptx",
-                                        "Thomas Weißschuh <thomas@weissschuh.net>");
+  gst_element_class_set_static_metadata(
+      element_class, "libopenaptx decoder", "Codec/Decoder/Audio",
+      "Audio decoder based on libopenaptx",
+      "Thomas Weißschuh <thomas@weissschuh.net>");
 
   gst_element_class_add_pad_template(element_class,
                                      gst_static_pad_template_get(&src_factory));
