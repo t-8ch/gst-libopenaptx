@@ -5,6 +5,7 @@ GST_DEBUG_CATEGORY_STATIC(ENCODER_NAME);
 
 struct _GstAptXEncoder {
   GstAudioEncoder parent;
+  gboolean hd;
   struct aptx_context *ctx;
 };
 
@@ -19,9 +20,10 @@ static GstStaticPadTemplate sink_factory = GST_STATIC_PAD_TEMPLATE(
                     "layout = interleaved, "
                     "channels = 2"));
 
-static GstStaticPadTemplate src_factory =
-    GST_STATIC_PAD_TEMPLATE(GST_AUDIO_ENCODER_SRC_NAME, GST_PAD_SRC,
-                            GST_PAD_ALWAYS, GST_STATIC_CAPS("audio/aptx"));
+static GstStaticPadTemplate src_factory = GST_STATIC_PAD_TEMPLATE(
+    GST_AUDIO_ENCODER_SRC_NAME, GST_PAD_SRC, GST_PAD_ALWAYS,
+    GST_STATIC_CAPS("audio/aptx; "
+                    "audio/aptx-hd"));
 
 static GstFlowReturn handle_frame(GstAudioEncoder *enc, GstBuffer *buffer) {
   GstAptXEncoder *self = GST_APTX_ENCODER(enc);
@@ -31,7 +33,13 @@ static GstFlowReturn handle_frame(GstAudioEncoder *enc, GstBuffer *buffer) {
   gboolean success;
 
   size_t output_size;
-  size_t sample_size = 4;
+  size_t sample_size;
+
+  if (self->hd) {
+    sample_size = 6;
+  } else {
+    sample_size = 4;
+  }
 
   if (buffer != NULL) {
     size_t input_size = gst_buffer_get_size(buffer);
@@ -89,20 +97,31 @@ static GstFlowReturn handle_frame(GstAudioEncoder *enc, GstBuffer *buffer) {
   g_assert_not_reached();
 }
 
-static gboolean set_format(GstAudioEncoder *enc, GstAudioInfo *info) {
-  gboolean success;
-
-  g_autoptr(GstCaps) src_caps = gst_static_pad_template_get_caps(&src_factory);
-  success = gst_audio_encoder_set_output_format(enc, src_caps);
-  g_assert_true(success);
-  return TRUE;
+static void reset_ctx(GstAptXEncoder *self) {
+  if (self->ctx != NULL) {
+    aptx_finish(self->ctx);
+  }
+  self->ctx = aptx_init(self->hd ? 1 : 0);
+  g_assert_nonnull(self->ctx);
 }
 
-static gboolean start(GstAudioEncoder *enc) {
+static gboolean set_format(GstAudioEncoder *enc, GstAudioInfo *info) {
+  gboolean success;
+  gboolean hd;
+
   GstAptXEncoder *self = GST_APTX_ENCODER(enc);
 
-  self->ctx = aptx_init(0);
-  g_assert_nonnull(self->ctx);
+  hd = gst_pad_peer_query_accept_caps(
+      enc->srcpad, gst_caps_new_empty_simple("audio/aptx-hd"));
+  g_autoptr(GstCaps) caps =
+      gst_caps_new_empty_simple(hd ? "audio/aptx-hd" : "audio/aptx");
+  success = gst_audio_encoder_set_output_format(enc, caps);
+  g_assert_true(success);
+  success = gst_audio_encoder_negotiate(enc);
+  g_assert_true(success);
+  self->hd = hd;
+  reset_ctx(self);
+
   return TRUE;
 }
 
@@ -132,6 +151,5 @@ static void gst_aptx_encoder_class_init(GstAptXEncoderClass *klass) {
       element_class, gst_static_pad_template_get(&sink_factory));
   audio_encoder_class->handle_frame = handle_frame;
   audio_encoder_class->set_format = set_format;
-  audio_encoder_class->start = start;
   audio_encoder_class->stop = stop;
 }
