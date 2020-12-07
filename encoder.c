@@ -113,6 +113,7 @@ static gboolean set_format(GstAudioEncoder *enc, GstAudioInfo *info) {
       enc->srcpad, gst_caps_new_empty_simple("audio/aptx-hd"));
   g_autoptr(GstCaps) caps =
       gst_caps_new_empty_simple(hd ? "audio/aptx-hd" : "audio/aptx");
+  gst_caps_set_simple(caps, "rate", G_TYPE_INT, info->rate, NULL);
   success = gst_audio_encoder_set_output_format(enc, caps);
   g_assert_true(success);
   success = gst_audio_encoder_negotiate(enc);

@@ -84,14 +84,25 @@ static void reset_ctx(GstAptXDecoder *self) {
   g_assert_nonnull(self->ctx);
 }
 
+static int get_rate(const GstCaps *caps) {
+        guint size = gst_caps_get_size(caps);
+        for (int i = 0; i < size; i++) {
+                GstStructure *s = gst_caps_get_structure(caps, i);
+                int value;
+                gboolean success = gst_structure_get_int(s, "rate", &value);
+                g_assert_true(success);
+                return value;
+        }
+        g_assert_not_reached();
+}
+
 static gboolean set_format(GstAudioDecoder *dec, GstCaps *caps) {
   GstAptXDecoder *self = GST_APTX_DECODER(dec);
 
   GstCaps *src_caps =
       gst_caps_copy(gst_static_pad_template_get_caps(&src_factory));
   g_assert_nonnull(src_caps);
-  gst_caps_set_simple(src_caps, "rate", G_TYPE_INT, 42100, NULL); // FIXME
-  gst_caps_set_simple(src_caps, "channels", G_TYPE_INT, 2, NULL);
+  gst_caps_set_simple(src_caps, "rate", G_TYPE_INT, get_rate(caps), NULL);
 
   gboolean success = gst_audio_decoder_set_output_caps(dec, src_caps);
 
