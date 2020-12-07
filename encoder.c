@@ -133,6 +133,12 @@ static gboolean stop(GstAudioEncoder *enc) {
   return TRUE;
 }
 
+static void flush(GstAudioEncoder *enc) {
+  GstAptXEncoder *self = GST_APTX_ENCODER(enc);
+
+  reset_ctx(self);
+}
+
 static void gst_aptx_encoder_class_init(GstAptXEncoderClass *klass) {
   GstElementClass *element_class = GST_ELEMENT_CLASS(klass);
   GstAudioEncoderClass *audio_encoder_class = GST_AUDIO_ENCODER_CLASS(klass);
@@ -152,4 +158,5 @@ static void gst_aptx_encoder_class_init(GstAptXEncoderClass *klass) {
   audio_encoder_class->handle_frame = handle_frame;
   audio_encoder_class->set_format = set_format;
   audio_encoder_class->stop = stop;
+  audio_encoder_class->flush = flush;
 }
