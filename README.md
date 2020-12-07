@@ -7,6 +7,7 @@
 
 ## What needs work
 
+* use error-recovering decoding
 * Handling buffers with more than one memory segment
 * non-stereo mode?
 * inputs which do not exactly contain 4 samples
