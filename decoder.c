@@ -6,6 +6,7 @@ GST_DEBUG_CATEGORY_STATIC(DECODER_NAME);
 
 struct _GstAptXDecoder {
   GstAudioDecoder parent;
+  gboolean hd;
   struct aptx_context *ctx;
 };
 
@@ -13,9 +14,10 @@ G_DEFINE_TYPE(GstAptXDecoder, gst_aptx_decoder, GST_TYPE_AUDIO_DECODER)
 
 static void gst_aptx_decoder_init(GstAptXDecoder *self) {}
 
-static GstStaticPadTemplate sink_factory =
-    GST_STATIC_PAD_TEMPLATE(GST_AUDIO_DECODER_SINK_NAME, GST_PAD_SINK,
-                            GST_PAD_ALWAYS, GST_STATIC_CAPS("audio/aptx"));
+static GstStaticPadTemplate sink_factory = GST_STATIC_PAD_TEMPLATE(
+    GST_AUDIO_DECODER_SINK_NAME, GST_PAD_SINK, GST_PAD_ALWAYS,
+    GST_STATIC_CAPS("audio/aptx; "
+                    "audio/aptx-hd"));
 
 static GstStaticPadTemplate src_factory =
     GST_STATIC_PAD_TEMPLATE(GST_AUDIO_DECODER_SRC_NAME, GST_PAD_SRC,
@@ -33,14 +35,18 @@ static GstFlowReturn handle_frame(GstAudioDecoder *dec, GstBuffer *buffer) {
 
   g_assert_cmpint(gst_buffer_n_memory(buffer), ==, 1);
 
-  size_t sample_size = 4;
+  size_t sample_size;
+  if (self->hd) {
+    sample_size = 6;
+  } else {
+    sample_size = 4;
+  }
 
   GstMemory *input_mem = gst_buffer_peek_memory(buffer, 0);
   GstMapInfo input_mapping;
   gboolean mapped = gst_memory_map(input_mem, &input_mapping, GST_MAP_READ);
   g_assert_true(mapped);
 
-  // FIXME size
   GstBuffer *target = gst_audio_decoder_allocate_output_buffer(
       dec, gst_buffer_get_size(buffer) / sample_size * 24);
   g_assert_nonnull(target);
@@ -62,13 +68,20 @@ static GstFlowReturn handle_frame(GstAudioDecoder *dec, GstBuffer *buffer) {
   GST_DEBUG("decoded read=%" G_GSIZE_FORMAT " written=%" G_GSIZE_FORMAT,
             processed, written);
 
-  g_assert_cmpuint(processed, >, 0);
+  g_assert_cmpuint(processed, ==, gst_buffer_get_size(buffer));
   gst_memory_resize(mapping.memory, 0, written);
   gst_memory_unmap(mapping.memory, &mapping);
   gst_memory_unmap(input_mapping.memory, &input_mapping);
 
   return gst_audio_decoder_finish_frame(dec, target, 1);
-  g_assert_not_reached();
+}
+
+static void reset_ctx(GstAptXDecoder *self) {
+  if (self->ctx != NULL) {
+    aptx_finish(self->ctx);
+  }
+  self->ctx = aptx_init(self->hd ? 1 : 0);
+  g_assert_nonnull(self->ctx);
 }
 
 static gboolean set_format(GstAudioDecoder *dec, GstCaps *caps) {
@@ -81,23 +94,13 @@ static gboolean set_format(GstAudioDecoder *dec, GstCaps *caps) {
   gst_caps_set_simple(src_caps, "channels", G_TYPE_INT, 2, NULL);
 
   gboolean success = gst_audio_decoder_set_output_caps(dec, src_caps);
+
+  self->hd = gst_pad_peer_query_accept_caps(
+      dec->sinkpad, gst_caps_new_empty_simple("audio/aptx-hd"));
+
   g_assert_true(success);
-
-  return TRUE;
-}
-
-static void reset_ctx(GstAptXDecoder *self) {
-  if (self->ctx != NULL) {
-    aptx_finish(self->ctx);
-  }
-  self->ctx = aptx_init(0);
-  g_assert_nonnull(self->ctx);
-}
-
-static gboolean start(GstAudioDecoder *dec) {
-  GstAptXDecoder *self = GST_APTX_DECODER(dec);
-
   reset_ctx(self);
+
   return TRUE;
 }
 
@@ -135,7 +138,6 @@ static void gst_aptx_decoder_class_init(GstAptXDecoderClass *klass) {
 
   audio_decoder_class->handle_frame = handle_frame;
   audio_decoder_class->set_format = set_format;
-  audio_decoder_class->start = start;
   audio_decoder_class->stop = stop;
   audio_decoder_class->flush = flush;
 }
