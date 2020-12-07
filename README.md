@@ -3,11 +3,11 @@
 ## What works
 
 * Encoding
+* Decoding
 
 ## What needs work
 
-* Decoding
-* Encoding buffers with more than one memory segment
+* Handling buffers with more than one memory segment
 * non-stereo mode?
-* encoder: inputs which do not exactly contain 4 samples
-* encoder: error handling besides full assertion failures
+* inputs which do not exactly contain 4 samples
+* error handling besides full assertion failures

@@ -1,4 +1,5 @@
 #include "encoder.h"
+#include "constants.h"
 
 GST_DEBUG_CATEGORY_STATIC(ENCODER_NAME);
 #define GST_CAT_DEFAULT ENCODER_NAME
@@ -13,12 +14,9 @@ G_DEFINE_TYPE(GstAptXEncoder, gst_aptx_encoder, GST_TYPE_AUDIO_ENCODER)
 
 static void gst_aptx_encoder_init(GstAptXEncoder *self) {}
 
-static GstStaticPadTemplate sink_factory = GST_STATIC_PAD_TEMPLATE(
-    GST_AUDIO_ENCODER_SINK_NAME, GST_PAD_SINK, GST_PAD_ALWAYS,
-    GST_STATIC_CAPS("audio/x-raw, "
-                    "format = S24LE, "
-                    "layout = interleaved, "
-                    "channels = 2"));
+static GstStaticPadTemplate sink_factory =
+    GST_STATIC_PAD_TEMPLATE(GST_AUDIO_ENCODER_SINK_NAME, GST_PAD_SINK,
+                            GST_PAD_ALWAYS, GST_STATIC_CAPS(RAW_CAPS));
 
 static GstStaticPadTemplate src_factory = GST_STATIC_PAD_TEMPLATE(
     GST_AUDIO_ENCODER_SRC_NAME, GST_PAD_SRC, GST_PAD_ALWAYS,

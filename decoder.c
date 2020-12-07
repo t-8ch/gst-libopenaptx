@@ -1,4 +1,5 @@
 #include "decoder.h"
+#include "constants.h"
 
 GST_DEBUG_CATEGORY_STATIC(DECODER_NAME);
 #define GST_CAT_DEFAULT DECODER_NAME
@@ -16,97 +17,102 @@ static GstStaticPadTemplate sink_factory =
     GST_STATIC_PAD_TEMPLATE(GST_AUDIO_DECODER_SINK_NAME, GST_PAD_SINK,
                             GST_PAD_ALWAYS, GST_STATIC_CAPS("audio/aptx"));
 
-static GstStaticPadTemplate src_factory = GST_STATIC_PAD_TEMPLATE(
-    GST_AUDIO_DECODER_SRC_NAME, GST_PAD_SRC, GST_PAD_ALWAYS,
-    GST_STATIC_CAPS("audio/x-raw, "
-                    "format = S24LE, "
-                    "layout = interleaved"));
+static GstStaticPadTemplate src_factory =
+    GST_STATIC_PAD_TEMPLATE(GST_AUDIO_DECODER_SRC_NAME, GST_PAD_SRC,
+                            GST_PAD_ALWAYS, GST_STATIC_CAPS(RAW_CAPS));
 
 static GstFlowReturn handle_frame(GstAudioDecoder *dec, GstBuffer *buffer) {
   GstAptXDecoder *self = GST_APTX_DECODER(dec);
+
+  if (buffer == NULL || gst_buffer_get_size(buffer) == 0) {
+    return GST_FLOW_EOS;
+  }
 
   GST_DEBUG("handle frame. memory=%d s=%" G_GSIZE_FORMAT,
             gst_buffer_n_memory(buffer), gst_buffer_get_size(buffer));
 
   g_assert_cmpint(gst_buffer_n_memory(buffer), ==, 1);
 
-  for (size_t n = 0; n < gst_buffer_n_memory(buffer); n++) {
-    GstMemory *input_mem = gst_buffer_peek_memory(buffer, n);
-    GstMapInfo input_mapping;
-    gboolean mapped = gst_memory_map(input_mem, &input_mapping, GST_MAP_READ);
-    g_assert_true(mapped);
+  size_t sample_size = 4;
 
-    // FIXME size
-    GstBuffer *target = gst_audio_decoder_allocate_output_buffer(
-        dec, gst_buffer_get_size(buffer) * 8);
-    g_assert_nonnull(target);
+  GstMemory *input_mem = gst_buffer_peek_memory(buffer, 0);
+  GstMapInfo input_mapping;
+  gboolean mapped = gst_memory_map(input_mem, &input_mapping, GST_MAP_READ);
+  g_assert_true(mapped);
 
-    size_t written;
+  // FIXME size
+  GstBuffer *target = gst_audio_decoder_allocate_output_buffer(
+      dec, gst_buffer_get_size(buffer) / sample_size * 24);
+  g_assert_nonnull(target);
 
-    GstMemory *mem = gst_buffer_peek_memory(target, 0);
-    GstMapInfo mapping;
-    mapped = gst_memory_map(mem, &mapping, GST_MAP_WRITE);
-    g_assert_true(mapped);
+  size_t written;
 
-    GST_DEBUG("decoding in.size=%" G_GSIZE_FORMAT
-              " out.maxsize=%" G_GSIZE_FORMAT,
-              input_mapping.size, mapping.maxsize);
+  GstMemory *mem = gst_buffer_peek_memory(target, 0);
+  GstMapInfo mapping;
+  mapped = gst_memory_map(mem, &mapping, GST_MAP_WRITE);
+  g_assert_true(mapped);
 
-    size_t processed =
-        aptx_decode(self->ctx, input_mapping.data, input_mapping.size,
-                    mapping.data, mapping.maxsize, &written);
+  GST_DEBUG("decoding in.size=%" G_GSIZE_FORMAT " out.maxsize=%" G_GSIZE_FORMAT,
+            input_mapping.size, mapping.maxsize);
 
-    GST_DEBUG("decoded read=%" G_GSIZE_FORMAT " written=%" G_GSIZE_FORMAT,
-              processed, written);
+  size_t processed =
+      aptx_decode(self->ctx, input_mapping.data, input_mapping.size,
+                  mapping.data, mapping.maxsize, &written);
 
-    // FIXME
-    g_assert_cmpuint(processed, >, 0);
-    mapping.size = written;
-    gst_memory_unmap(mapping.memory, &mapping);
+  GST_DEBUG("decoded read=%" G_GSIZE_FORMAT " written=%" G_GSIZE_FORMAT,
+            processed, written);
 
-    GstCaps *src_caps =
-        gst_caps_copy(gst_static_pad_template_get_caps(&src_factory));
-    g_assert_nonnull(src_caps);
-    gst_caps_set_simple(src_caps, "rate", G_TYPE_INT, 42100, NULL);
-    gst_caps_set_simple(src_caps, "channels", G_TYPE_INT, 2, NULL);
+  g_assert_cmpuint(processed, >, 0);
+  gst_memory_resize(mapping.memory, 0, written);
+  gst_memory_unmap(mapping.memory, &mapping);
+  gst_memory_unmap(input_mapping.memory, &input_mapping);
 
-    GstAudioInfo *info = gst_audio_info_new();
-    g_assert_nonnull(info);
-    gboolean converted = gst_audio_info_from_caps(info, src_caps);
-    g_assert_true(converted);
-
-    GstAudioMeta *meta =
-        gst_buffer_add_audio_meta(target, info, written / 6, NULL);
-
-    gst_audio_decoder_set_output_format(dec, info);
-
-    if (processed != gst_buffer_get_size(buffer)) {
-      // FIXME
-      // GST_AUDIO_DECODER_ERROR(dec, 1,
-    }
-
-    return gst_audio_decoder_finish_frame(dec, target, 1);
-  }
+  return gst_audio_decoder_finish_frame(dec, target, 1);
   g_assert_not_reached();
+}
+
+static gboolean set_format(GstAudioDecoder *dec, GstCaps *caps) {
+  GstAptXDecoder *self = GST_APTX_DECODER(dec);
+
+  GstCaps *src_caps =
+      gst_caps_copy(gst_static_pad_template_get_caps(&src_factory));
+  g_assert_nonnull(src_caps);
+  gst_caps_set_simple(src_caps, "rate", G_TYPE_INT, 42100, NULL); // FIXME
+  gst_caps_set_simple(src_caps, "channels", G_TYPE_INT, 2, NULL);
+
+  gboolean success = gst_audio_decoder_set_output_caps(dec, src_caps);
+  g_assert_true(success);
+
+  return TRUE;
+}
+
+static void reset_ctx(GstAptXDecoder *self) {
+  if (self->ctx != NULL) {
+    aptx_finish(self->ctx);
+  }
+  self->ctx = aptx_init(0);
+  g_assert_nonnull(self->ctx);
 }
 
 static gboolean start(GstAudioDecoder *dec) {
   GstAptXDecoder *self = GST_APTX_DECODER(dec);
 
-  GST_DEBUG("start");
-
-  self->ctx = aptx_init(0);
+  reset_ctx(self);
   return TRUE;
 }
 
 static gboolean stop(GstAudioDecoder *dec) {
   GstAptXDecoder *self = GST_APTX_DECODER(dec);
 
-  GST_DEBUG("stop");
-
   aptx_finish(self->ctx);
   self->ctx = NULL;
   return TRUE;
+}
+
+static void flush(GstAudioDecoder *dec, gboolean hard) {
+  GstAptXDecoder *self = GST_APTX_DECODER(dec);
+
+  reset_ctx(self);
 }
 
 static void gst_aptx_decoder_class_init(GstAptXDecoderClass *klass) {
@@ -128,6 +134,8 @@ static void gst_aptx_decoder_class_init(GstAptXDecoderClass *klass) {
       element_class, gst_static_pad_template_get(&sink_factory));
 
   audio_decoder_class->handle_frame = handle_frame;
+  audio_decoder_class->set_format = set_format;
   audio_decoder_class->start = start;
   audio_decoder_class->stop = stop;
+  audio_decoder_class->flush = flush;
 }
