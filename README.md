@@ -1,5 +1,8 @@
 # GStreamer plugin for libopenaptx
 
+### Superseded by https://gitlab.freedesktop.org/gstreamer/gst-plugins-bad/-/merge_requests/1871
+
+
 ## What works
 
 * Encoding
